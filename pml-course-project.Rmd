@@ -1,0 +1,128 @@
+---
+title: "Practical Machine Learning Course Project"
+author: "Liza Cordero"
+date: "February 18, 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+## Summary
+
+The goal is to predict if the Unilateral Dumbbell Bicep Curls were performed correctly (Class A) or not (Class B, C, D, E) using data from different on-body sensing approaches. Six participants were asked to perform one set of 10 repetitions of the bicep curls in five different ways.  Class A corresponds to the correct way of doing the exercise while Classes B, C, D, E corresponds common mistakes made when doing the exercise.
+
+## Input Data
+
+Training and Testing data sets were downloaded from the course website and read.csv was used to access the data for predicting.
+
+```{r}
+training<-read.csv('pml-training.csv',na.strings=c("NA",""),header=TRUE)
+testing<-read.csv('pml-testing.csv',na.strings=c("NA",""),header=TRUE)
+```
+
+The libraries needed for predicting were loaded.
+
+```{r}
+library(caret)
+library(rattle)
+library(gridExtra)
+```
+
+## Features
+
+Upon inspection of the data, I noticed that there were a few columns that seemed to contain all NAs.  I tested for these and removed them from the data set. Note that I duplicated the procedure for the test data set.
+
+```{r}
+notNAs <- function(x) {
+    as.vector(apply(x, 2, function(x) length(which(!is.na(x)))))
+}
+colNAs <- notNAs(training)
+
+remCols <- c()
+colsTrain <- colnames(training)
+nRowsTrain <-nrow(training)
+
+for (cnt in 1:length(colNAs)) {
+    if (colNAs[cnt] < nRowsTrain) {
+        remCols <- c(remCols, colsTrain[cnt])
+    }
+}
+
+training <- training[,!(names(training) %in% remCols)]
+testing <- testing[,!(names(testing) %in% remCols)]
+
+```
+
+The first seven columns seemed unnecessary for predicting and were dropped as well.
+
+``` {r}
+training <- training [,8:length(colnames(training))]
+testing <- testing[,8:length(colnames(testing))]
+```
+
+## Making the Training and Testing Set
+
+I divided the new training data set to have a training and testing set.
+
+``` {r}
+set.seed(777)
+inTrain = createDataPartition(training$classe, p = .60)[[1]]
+trainingSub = training[inTrain,]
+validationSub = training[-inTrain,]
+```
+
+## Decision Tree Model
+
+Since this is a classification problem, I tried the decision tree model first using rpart.
+
+``` {r}
+set.seed(777)
+model1 <- train(classe ~ ., method="rpart",data=trainingSub)
+```
+
+Using model1 to predict our testing data, we got an overall accuracy of only 49.62%, which is not acceptable since it is even less than what would result by chance.
+
+```{r}
+validationPredict=predict(model1,validationSub)
+confusionMatrix(validationSub$classe,validationPredict)
+```
+
+## Random Forest Model
+
+The next model tried was the Random Forest Model with cross validation.
+
+```{r}
+set.seed(777)
+model2 <- train(classe ~ ., method="rf",trControl=trainControl(method = "cv", number = 3), data=trainingSub)
+print(model2)
+```
+
+The random forest model resulted in more accurate predictions, all 3 trials resulted in 98% accuracy. When tested on the testing data set, it gave an overall accuracy of 99%. Sensitivity, specificity, positive predictive value, and negative predictive value were all within 97%-100%. 
+
+```{r}
+validationPredict2<-predict(model2,validationSub)
+confusionMatrix(validationSub$classe,validationPredict2)
+```
+
+## In and Out of Sample Errors
+
+Testing the prediction in-sample, when using the training subset the sensitivity, specificity, positive predictive value, and negative predictive value were all 100%.  Note that when we used model2 to predict the testing data set above, it got a slightly lower overall accuracy of 99% since we did not include the testing data set when we trained the model.  The testing data set prediction represents the out-of-sample errors.
+
+```{r}
+trainingPredict <- predict(model2,trainingSub)
+confusionMatrix(trainingSub$classe,trainingPredict)
+```
+
+## Predicting the Class of Test Data
+
+The value of classe was then predicted for our test data using the code below.
+
+```{r}
+testingPredict <- predict(model2,testing,type="raw",predict.all=FALSE)
+print(testingPredict)
+```
+
+## Conclusion
+
+The random forest method produced the best model for predicting the quality of unilateral dumbbell bicep curls in the study of Human Activity Recognition from http://groupware.les.inf.puc-rio.br/har#ixzz3PO5pnm1R.  It produced a 99% overall accuracy of prediction.  Data was produced by six participants and was trained on their on-body sensing data.  Although the model is very accurate in predicting quality of activity for the six participants, it may not be as accurate when predicting quality of activity for a different set of participants.
